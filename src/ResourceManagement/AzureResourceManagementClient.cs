@@ -11,6 +11,8 @@ using Azure.Core;
 using Azure.ResourceManager;
 using Azure.ResourceManager.Resources;
 using Azure.ResourceManager.Authorization;
+using Azure.ResourceManager.Monitor;
+using Azure.ResourceManager.Monitor.Models;
 
 using System.Text;
 
@@ -53,58 +55,70 @@ public class AzureResourceManagementClient
         return armClient.GetSubscriptionResource(new ResourceIdentifier("/subscriptions/"+ subscriptionId)).GetResourceGroup(rgDisplayName).Value;
     }
 
-    public async Task SetResourceGroupSox(string subscriptionId, ResourceGroupResource rg)
+    public async Task SetResourceGroupSox(string subscriptionId, ResourceGroupResource rg, string actionGroupId)
     {
-        eventLog.Add("Setting Lock - Not Yet Implemented");
-        // await SetResourceGroupLockDelAlert(subscriptionId, rg);
+        eventLog.Add("Setting Lock deletion Alert");
+        await SetResourceGroupLockDelAlert(subscriptionId, rg, actionGroupId);
         eventLog.Add("Setting Sox Tags");
         SetResourceGroupTagsSox(rg);
         eventLog.Add("Setting Read Only Lock");
         await SetResourceGroupLockReadOnly(subscriptionId, rg, "AutoSoxLock");
     }
 
-    public async Task SetResourceGroupLockDelAlert(string subscriptionId, ResourceGroupResource rg)
+    public async Task SetResourceGroupLockDelAlert(string subscriptionId, ResourceGroupResource rg, string actionGroupId)
     {
         var resourceGroupName = rg.Data.Name;
         var ruleName = $"AutoLockMonitoring{resourceGroupName}";
+
+        // var actionGroupId = @"/subscriptions/2c093e17-a8ee-4f4c-a025-4dc61ff3fdfd/resourcegroups/testresgroup2/providers/microsoft.insights/actiongroups/testag";
+
         var url = $@"https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Insights/activityLogAlerts/{ruleName}?api-version=2020-10-01";
 
-        var content = 
-            new JObject(
-                new JProperty("properties", new JObject(
-                    new JProperty("scopes", $@"/subscriptions/{subscriptionId}"),
-                    new JProperty("description", "Auto Generated Alert Rule Monitoring Lock Deletion"),
-                    new JProperty("enabled", true),
-                    new JProperty("condition", new JObject(
-                        new JProperty("allOf", new JArray(
-                            new JObject(
-                                new JProperty("field", "category"),
-                                new JProperty("equals", "Administrative")
-                            ),
-                            new JObject(
-                                new JProperty("field", "operationName"),
-                                new JProperty("equals", "Microsoft.Authorization/locks/delete")
-                            )
-                        ))
-                    )),
-                    new JProperty("actions", new JObject(
-                        new JProperty("actionGroups", new JArray(
-                            new JObject(
-                                new JProperty("actionGroupId", @"/subscriptions/2c093e17-a8ee-4f4c-a025-4dc61ff3fdfd/resourcegroups/testresgroup2/providers/microsoft.insights/actiongroups/testag"),
-                                new JProperty("webhookProperties", new JObject())
-                            )
-                        ))
-                    ))
-                ))
-            );
+        // var content = 
+        //     new JObject(
+        //         new JProperty("properties", new JObject(
+        //             new JProperty("description", "Auto Generated Alert Rule Monitoring Lock Deletion"),
+        //             new JProperty("actions", new JObject(
+        //                 new JProperty("actionGroups", new JArray(
+        //                     new JObject(
+        //                         new JProperty("actionGroupId", actionGroupId),
+        //                         new JProperty("webhookProperties", new JObject(
+        //                             new JProperty("sampleWebhookProperty", "SamplePropertyValue")
+        //                         ))
+        //                     )
+        //                 ))
+        //             )),
+        //             new JProperty("condition", new JObject(
+        //                 new JProperty("allOf", new JArray(
+        //                     new JObject(
+        //                         new JProperty("equals", "Administrative"),
+        //                         new JProperty("field", "category")
+        //                     ),
+        //                     new JObject(
+        //                         new JProperty("equals", "Microsoft.Authorization/locks/delete"),
+        //                         new JProperty("field", "operationName")
+        //                     )
+        //                 ))
+        //             )),
+        //             new JProperty("enabled", true),
+        //             new JProperty("location", "Global"),
+        //             new JProperty("scopes", $@"/subscriptions/{subscriptionId}"),
+        //             new JProperty("tags", new JObject())
+        //         ))
+        //     );
 
-        var s = new JsonSerializerSettings { DateFormatHandling = DateFormatHandling.MicrosoftDateFormat };
+        // var s = new JsonSerializerSettings { DateFormatHandling = DateFormatHandling.MicrosoftDateFormat };
 
-        var response = await AzureRestPut(url, JsonConvert.SerializeObject(content, s));
+        var jst = $"{{\"location\": \"Global\",\"tags\": {{}},\"properties\": {{\"scopes\": [\"/subscriptions/{subscriptionId}\"],\"condition\": {{\"allOf\": [{{\"field\": \"category\",\"equals\": \"Administrative\"}},{{\"field\": \"operationName\",\"equals\": \"Microsoft.Authorization/locks/delete\"}}]}},\"actions\": {{\"actionGroups\": [{{\"actionGroupId\": \"{actionGroupId}\",\"webhookProperties\": {{\"sampleWebhookProperty\": \"SamplePropertyValue\"}}}}]}},\"enabled\": true,\"description\": \"Description of sample Activity Log Alert rule.\"}}}}";
+        
+
+        // var response = await AzureRestPut(url, JsonConvert.SerializeObject(content, s));
+        var response = await AzureRestPut(url, jst);
 
         if (response.IsSuccessStatusCode == false)
         {
-            throw new Exception("SetResourceGroupLockReadOnly REST call failed:\n" + response.ToString() + "\n\n" + content.ToString());
+            // throw new Exception("SetResourceGroupLockReadOnly REST call failed:\n" + response.ToString() + "\n\n" + content.ToString());
+            throw new Exception("SetResourceGroupLockReadOnly REST call failed:\n" + response.ToString() + "\n\n" + jst);
         }
     }
 
@@ -172,7 +186,7 @@ public class AzureResourceManagementClient
 
     public void SetHttpHeaders()
     {
-        client.DefaultRequestHeaders.Accept.Clear();
+        client.DefaultRequestHeaders.Clear();
         client.DefaultRequestHeaders.Add("Authorization", "Bearer " + GetTokenString());
         client.DefaultRequestHeaders.Add("Host", "management.azure.com");
     }
