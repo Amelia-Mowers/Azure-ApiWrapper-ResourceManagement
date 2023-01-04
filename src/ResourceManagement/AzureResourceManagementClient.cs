@@ -26,8 +26,8 @@ public class AzureResourceManagementClient
     HttpClient client;
 
     public AzureResourceManagementClient (
-        DefaultAzureCredential _credential = null, 
-        List<string> _eventLog = null
+        List<string> _eventLog = null,
+        DefaultAzureCredential _credential = null
     )
     {
         if(_eventLog != null) { eventLog = _eventLog; } 
